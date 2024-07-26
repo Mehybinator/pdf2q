@@ -23,3 +23,7 @@ go.work.sum
 
 # Custom ignores
 /bin
+/pdfs
+/imgs
+.env
+go.sum
