@@ -1,6 +1,6 @@
 BINARY_NAME=pdf2q.exe
 BINARY_DIR=bin
-MAIN=cmd
+MAIN=src
 
 build:
 	GOARCH=amd64 GOOS=windows go build -o ./${BINARY_DIR}/${BINARY_NAME} ./${MAIN}
