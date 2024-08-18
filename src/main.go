@@ -14,8 +14,13 @@ import (
 var app *tview.Application = tview.NewApplication()
 
 func main() {
+	paths, err := makePaths()
+	if err != nil {
+		handleFatalError(err)
+	}
+
 	// Initialize paths
-	_, _, pdfsDir, imagesDir, questionsDir, err := InitPaths()
+	err = InitPaths(paths)
 	if err != nil {
 		handleFatalError(err)
 	}
@@ -23,32 +28,22 @@ func main() {
 	// Load environment variables from .env file
 	err = godotenv.Load(".env")
 	if err != nil {
-		handleFatalError(fmt.Errorf("no \".env\" file was located, its is needed to keep your OPENAI_API key in this file"))
+		err := os.WriteFile(".env", []byte("OPENAI_API_KEY = \"\""), 0775)
+		if err != nil {
+			handleFatalError(fmt.Errorf("no \".env\" file was located, its is needed to keep your OPENAI_API key in this file"))
+		}
 	}
 
 	// Check if OPENAI_API_KEY is set and not empty
-	apiKey := os.Getenv("OPENAI_API")
+	apiKey := os.Getenv("OPENAI_API_KEY")
 	if apiKey == "" {
-		handleFatalError(fmt.Errorf("OPENAI_API is not set or is empty, please check the \".env\" file"))
+		handleFatalError(fmt.Errorf("OPENAI_API_KEY is not set or is empty, please check the \".env\" file"))
 	}
 
 	// Retrieve PDF file paths
-	var pdfPaths []string
-	err = filepath.Walk(pdfsDir, func(path string, info fs.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if filepath.Ext(path) == ".pdf" {
-			pdfPaths = append(pdfPaths, path)
-		}
-		return nil
-	})
+	pdfs, err := getPDFS(paths)
 	if err != nil {
 		handleFatalError(err)
-	}
-
-	if len(pdfPaths) == 0 {
-		handleFatalError(fmt.Errorf("no PDFs found in %q folder", pdfsDir))
 	}
 
 	// Set up tview components
@@ -74,10 +69,9 @@ func main() {
 		AddPage("final", finalMessageFlx, true, false)
 
 	// Add PDFs to the list view
-	for idx, pdfPath := range pdfPaths {
-		pdfPath := pdfPath // capture range variable
-		pdfsList.AddItem(filepath.Base(pdfPath), "", rune(49+idx), func() {
-			showLoadingSpinner(pages, pdfPath, imagesDir, questionsDir, finalMessage)
+	for idx, pdf := range pdfs {
+		pdfsList.AddItem(filepath.Base(pdf), "", rune(49+idx), func() {
+			showLoadingSpinner(pages, pdf, paths, finalMessage)
 		})
 	}
 
@@ -87,23 +81,15 @@ func main() {
 	}
 }
 
-// handleFatalError handles fatal errors by printing them to the terminal and waiting for a keypress before exiting
-func handleFatalError(err error) {
-	fmt.Printf("Error: %v\n", err)
-	fmt.Println("Press any key to exit...")
-	fmt.Scanln()
-	os.Exit(1)
-}
-
 // showLoadingSpinner displays the loading spinner and processes the selected PDF
-func showLoadingSpinner(pages *tview.Pages, pdfPath string, imagesDir string, questionsDir string, finalMessage *tview.TextView) {
+func showLoadingSpinner(pages *tview.Pages, pdfPath string, paths map[string]string, finalMessage *tview.TextView) {
 	// Clear the screen before switching to the loading page
 	app.Sync()
 
 	pages.SwitchToPage("loading")
 
 	go func() {
-		err := ProcessPDF(pdfPath, imagesDir)
+		err := ProcessPDF(pdfPath, paths["images"])
 		if err != nil {
 			app.QueueUpdateDraw(func() {
 				finalMessage.SetText(fmt.Sprintf("[red]%v", err))
@@ -117,7 +103,7 @@ func showLoadingSpinner(pages *tview.Pages, pdfPath string, imagesDir string, qu
 			return
 		}
 
-		err = GenerateQuestions(imagesDir, questionsDir, pdfPath)
+		err = GenerateQuestions(paths["images"], paths["questions"], pdfPath)
 		if err != nil {
 			app.QueueUpdateDraw(func() {
 				finalMessage.SetText(fmt.Sprintf("[red]%v", err))
@@ -156,4 +142,51 @@ func animateLoadingSpinner(loading *tview.TextView) {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+}
+
+func makePaths() (map[string]string, error) {
+	var paths = make(map[string]string)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return paths, err
+	}
+
+	paths["data"] = filepath.Join(wd, "data")
+	paths["pdfs"] = filepath.Join(paths["data"], "pdfs")
+	paths["images"] = filepath.Join(paths["data"], "images")
+	paths["questions"] = filepath.Join(paths["data"], "questions")
+
+	return paths, nil
+}
+
+func getPDFS(paths map[string]string) ([]string, error) {
+
+	var pdfs []string
+	err := filepath.Walk(paths["pdfs"], func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if filepath.Ext(path) == ".pdf" {
+			pdfs = append(pdfs, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return pdfs, err
+	}
+
+	if len(pdfs) == 0 {
+		return pdfs, fmt.Errorf("no PDFs found in %q folder", paths["pdfs"])
+	}
+
+	return pdfs, nil
+}
+
+// handleFatalError handles fatal errors by printing them to the terminal and waiting for a keypress before exiting
+func handleFatalError(err error) {
+	fmt.Printf("Error: %v\n", err)
+	fmt.Println("Press any key to exit...")
+	fmt.Scanln()
+	os.Exit(1)
 }

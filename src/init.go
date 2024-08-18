@@ -3,32 +3,17 @@ package main
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // InitPaths initializes the working directory, PDF directory, image directory, and retrieves PDF paths
-func InitPaths() (wd string, dataDir string, pdfsDir string, imagesDir string, questionsDir string, err error) {
-	// Get the current working directory
-	wd, err = os.Getwd()
-	if err != nil {
-		return "", "", "", "", "", fmt.Errorf("failed to get working directory: %v", err)
-	}
-
-	// Define directory paths
-	dataDir = filepath.Join(wd, "data")
-	pdfsDir = filepath.Join(dataDir, "pdfs")
-	imagesDir = filepath.Join(dataDir, "images")
-	questionsDir = filepath.Join(dataDir, "questions")
-
+func InitPaths(paths map[string]string) error {
 	// Create the directories if they do not exist
-	dirs := []string{dataDir, pdfsDir, imagesDir, questionsDir}
-	for _, dir := range dirs {
-		if err := createDirIfNotExist(dir); err != nil {
-			return "", "", "", "", "", err
+	for _, v := range paths {
+		if err := createDirIfNotExist(v); err != nil {
+			return err
 		}
 	}
-
-	return wd, dataDir, pdfsDir, imagesDir, questionsDir, nil
+	return nil
 }
 
 // createDirIfNotExist creates a directory if it does not already exist
